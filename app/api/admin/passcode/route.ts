@@ -2,10 +2,6 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "force-no-store";
-
 const PASSCODE_FILE_PATH = path.join(process.cwd(), "data", "adminPasscode.json");
 const CLOUD_PASSCODE_BLOB_URL = "https://jsonblob.com/api/jsonBlob/019fc192-e3b6-7d26-807a-acbc1c3dd755";
 const DEFAULT_PIN = "OmAdminPasscode";
@@ -13,12 +9,9 @@ const DEFAULT_PIN = "OmAdminPasscode";
 let cachedPin: string | null = null;
 
 async function getStoredPin(): Promise<string> {
-  // 1. Fetch from Cloud Persistent Store so all devices get the same PIN without caching
+  // 1. Fetch from Cloud Persistent Store so all devices/serverless containers get the same PIN
   try {
-    const cloudRes = await fetch(`${CLOUD_PASSCODE_BLOB_URL}?t=${Date.now()}`, {
-      cache: "no-store",
-      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
-    });
+    const cloudRes = await fetch(CLOUD_PASSCODE_BLOB_URL, { cache: "no-store" });
     if (cloudRes.ok) {
       const cloudData = await cloudRes.json();
       if (cloudData && cloudData.pin) {
@@ -79,7 +72,7 @@ export async function GET() {
   const currentPin = await getStoredPin();
   const isDefault = currentPin === DEFAULT_PIN;
   return NextResponse.json({ success: true, isDefault }, {
-    headers: { "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate" },
+    headers: { "Cache-Control": "no-store, max-age=0" },
   });
 }
 

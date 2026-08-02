@@ -3,16 +3,12 @@ import fs from "fs";
 import path from "path";
 import { PORTFOLIO_DATA } from "@/data/portfolioData";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "force-no-store";
-
 const DATA_FILE_PATH = path.join(process.cwd(), "data", "portfolioData.json");
 const CLOUD_PORTFOLIO_BLOB_URL = "https://jsonblob.com/api/jsonBlob/019fc192-ec7e-7f39-b6f2-1166fc51e047";
 
 let memoryCache: any = null;
 
-function safeMergeWithDefault(incoming: any) {
+function safeMerge(incoming: any) {
   if (!incoming || typeof incoming !== "object") return PORTFOLIO_DATA;
   return {
     ...PORTFOLIO_DATA,
@@ -21,30 +17,30 @@ function safeMergeWithDefault(incoming: any) {
       ...PORTFOLIO_DATA.personal,
       ...(incoming.personal || {}),
     },
-    skills: Array.isArray(incoming.skills) ? incoming.skills : PORTFOLIO_DATA.skills,
-    projects: Array.isArray(incoming.projects) ? incoming.projects : PORTFOLIO_DATA.projects,
-    experience: Array.isArray(incoming.experience) ? incoming.experience : PORTFOLIO_DATA.experience,
-    education: Array.isArray(incoming.education) ? incoming.education : PORTFOLIO_DATA.education,
-    achievements: Array.isArray(incoming.achievements) ? incoming.achievements : PORTFOLIO_DATA.achievements,
-    certificates: Array.isArray(incoming.certificates) ? incoming.certificates : PORTFOLIO_DATA.certificates,
-    testimonials: Array.isArray(incoming.testimonials) ? incoming.testimonials : PORTFOLIO_DATA.testimonials,
-    stats: Array.isArray(incoming.stats) ? incoming.stats : PORTFOLIO_DATA.stats,
-    aboutTimeline: Array.isArray(incoming.aboutTimeline) ? incoming.aboutTimeline : PORTFOLIO_DATA.aboutTimeline,
+    skills: Array.isArray(incoming.skills) && incoming.skills.length > 0 ? incoming.skills : PORTFOLIO_DATA.skills,
+    projects: Array.isArray(incoming.projects) && incoming.projects.length > 0 ? incoming.projects : PORTFOLIO_DATA.projects,
+    experience: Array.isArray(incoming.experience) && incoming.experience.length > 0 ? incoming.experience : PORTFOLIO_DATA.experience,
+    education: Array.isArray(incoming.education) && incoming.education.length > 0 ? incoming.education : PORTFOLIO_DATA.education,
+    achievements: Array.isArray(incoming.achievements) && incoming.achievements.length > 0 ? incoming.achievements : PORTFOLIO_DATA.achievements,
+    certificates: Array.isArray(incoming.certificates) && incoming.certificates.length > 0 ? incoming.certificates : PORTFOLIO_DATA.certificates,
+    testimonials: Array.isArray(incoming.testimonials) && incoming.testimonials.length > 0 ? incoming.testimonials : PORTFOLIO_DATA.testimonials,
+    stats: Array.isArray(incoming.stats) && incoming.stats.length > 0 ? incoming.stats : PORTFOLIO_DATA.stats,
+    aboutTimeline: Array.isArray(incoming.aboutTimeline) && incoming.aboutTimeline.length > 0 ? incoming.aboutTimeline : PORTFOLIO_DATA.aboutTimeline,
     githubStats: incoming.githubStats || PORTFOLIO_DATA.githubStats,
   };
 }
 
 async function readPortfolioData() {
-  // 1. Try Cloud Persistent Store with no-store headers
+  // 1. Try Cloud Persistent Store
   try {
-    const cloudRes = await fetch(`${CLOUD_PORTFOLIO_BLOB_URL}?t=${Date.now()}`, {
+    const cloudRes = await fetch(CLOUD_PORTFOLIO_BLOB_URL, {
       cache: "no-store",
-      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+      headers: { Accept: "application/json" },
     });
     if (cloudRes.ok) {
       const cloudData = await cloudRes.json();
       if (cloudData && cloudData.personal) {
-        memoryCache = safeMergeWithDefault(cloudData);
+        memoryCache = safeMerge(cloudData);
         return memoryCache;
       }
     }
@@ -54,14 +50,14 @@ async function readPortfolioData() {
 
   // 2. Fallback to memory cache
   if (memoryCache) {
-    return safeMergeWithDefault(memoryCache);
+    return safeMerge(memoryCache);
   }
 
-  // 3. Fallback to local disk file
+  // 3. Fallback to local file
   try {
     if (fs.existsSync(DATA_FILE_PATH)) {
       const fileContent = fs.readFileSync(DATA_FILE_PATH, "utf-8");
-      memoryCache = safeMergeWithDefault(JSON.parse(fileContent));
+      memoryCache = safeMerge(JSON.parse(fileContent));
       return memoryCache;
     }
   } catch (error) {}
@@ -69,29 +65,8 @@ async function readPortfolioData() {
   return PORTFOLIO_DATA;
 }
 
-async function writePortfolioData(incomingData: any) {
-  // Read current existing data first so saving one section never wipes out other sections
-  const existing = await readPortfolioData();
-
-  const merged = {
-    ...existing,
-    ...incomingData,
-    personal: {
-      ...existing.personal,
-      ...(incomingData.personal || {}),
-    },
-    skills: Array.isArray(incomingData.skills) ? incomingData.skills : existing.skills,
-    projects: Array.isArray(incomingData.projects) ? incomingData.projects : existing.projects,
-    experience: Array.isArray(incomingData.experience) ? incomingData.experience : existing.experience,
-    education: Array.isArray(incomingData.education) ? incomingData.education : existing.education,
-    achievements: Array.isArray(incomingData.achievements) ? incomingData.achievements : existing.achievements,
-    certificates: Array.isArray(incomingData.certificates) ? incomingData.certificates : existing.certificates,
-    testimonials: Array.isArray(incomingData.testimonials) ? incomingData.testimonials : existing.testimonials,
-    stats: Array.isArray(incomingData.stats) ? incomingData.stats : existing.stats,
-    aboutTimeline: Array.isArray(incomingData.aboutTimeline) ? incomingData.aboutTimeline : existing.aboutTimeline,
-    githubStats: incomingData.githubStats || existing.githubStats,
-  };
-
+async function writePortfolioData(data: any) {
+  const merged = safeMerge(data);
   memoryCache = merged;
 
   // 1. Save to Cloud Persistent Blob
@@ -122,8 +97,7 @@ export async function GET() {
     const data = await readPortfolioData();
     return NextResponse.json({ success: true, data }, {
       headers: {
-        "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
-        "Pragma": "no-cache",
+        "Cache-Control": "no-store, max-age=0, must-revalidate",
       },
     });
   } catch {
