@@ -12,7 +12,7 @@ export default function Contact() {
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     audioFx.playClick();
 
@@ -23,12 +23,29 @@ export default function Contact() {
     }
 
     setStatus("submitting");
+    setErrorMessage("");
 
-    setTimeout(() => {
-      audioFx.playSuccess();
-      setStatus("success");
-      setFormData({ name: "", email: "", subject: "", message: "" });
-    }, 1000);
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      const resData = await res.json();
+
+      if (resData.success) {
+        audioFx.playSuccess();
+        setStatus("success");
+        setFormData({ name: "", email: "", subject: "", message: "" });
+      } else {
+        setStatus("error");
+        setErrorMessage(resData.error || "Failed to send message. Please try again.");
+      }
+    } catch {
+      setStatus("error");
+      setErrorMessage("Network error while sending message. Please try again.");
+    }
   };
 
   return (

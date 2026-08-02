@@ -91,7 +91,7 @@ export interface BlogPost {
 
 export const PORTFOLIO_DATA = {
   personal: {
-    name: "Om Santosh Wakchaure",
+    name: "Om Wakchaure",
     shortName: "Om Wakchaure",
     titles: [
       "AI & Data Science Engineer",

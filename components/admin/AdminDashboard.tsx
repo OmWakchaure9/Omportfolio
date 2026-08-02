@@ -73,7 +73,8 @@ export default function AdminDashboard() {
   const [emailjsPublicKey, setEmailjsPublicKey] = useState("GV2lZkC3WjUs1_LKl");
   const [showSmtpConfig, setShowSmtpConfig] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<"personal" | "skills" | "projects" | "experience" | "certificates" | "security" | "export">("personal");
+  const [activeTab, setActiveTab] = useState<"personal" | "skills" | "projects" | "experience" | "certificates" | "security" | "export" | "inbox">("personal");
+  const [inboxMessages, setInboxMessages] = useState<any[]>([]);
   const [saveToast, setSaveToast] = useState(false);
   const [currentPinInput, setCurrentPinInput] = useState("");
   const [newPinInput, setNewPinInput] = useState("");
@@ -934,6 +935,22 @@ export default function AdminDashboard() {
         >
           <Download className="w-4 h-4" />
           <span>Backup & Export</span>
+        </button>
+        <button
+          onClick={async () => {
+            setActiveTab("inbox");
+            try {
+              const res = await fetch("/api/contact");
+              const data = await res.json();
+              if (data.messages) setInboxMessages(data.messages);
+            } catch (e) {}
+          }}
+          className={`px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === "inbox" ? "bg-gradient-to-r from-purple-600 to-cyan-600 text-white shadow-neon-purple" : "glass-card text-slate-400"
+          }`}
+        >
+          <Mail className="w-4 h-4 text-cyan-400" />
+          <span>Messages Inbox ({inboxMessages.length})</span>
         </button>
       </div>
 
@@ -2113,6 +2130,72 @@ export default function AdminDashboard() {
               </div>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Tab 8: Messages Inbox */}
+      {activeTab === "inbox" && (
+        <div className="glass-card p-8 border border-white/10 space-y-6">
+          <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Mail className="w-5 h-5 text-cyan-400" />
+              <span>Received Messages Inbox ({inboxMessages.length})</span>
+            </h2>
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/contact");
+                  const data = await res.json();
+                  if (data.messages) setInboxMessages(data.messages);
+                } catch (e) {}
+              }}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 text-cyan-400 text-xs font-mono hover:bg-slate-800 flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Refresh Inbox</span>
+            </button>
+          </div>
+
+          {inboxMessages.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-xs font-mono">
+              No contact form messages received yet. All new messages submitted on your portfolio website will appear here in real-time.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {inboxMessages.map((msg: any) => (
+                <div key={msg.id || Math.random()} className="p-5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3 font-sans">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 pb-2">
+                    <div>
+                      <h3 className="text-sm font-bold text-white">{msg.name}</h3>
+                      <a href={`mailto:${msg.email}`} className="text-xs font-mono text-cyan-400 hover:underline">
+                        {msg.email}
+                      </a>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2.5 py-1 rounded-full border border-white/5">
+                      {msg.createdAt ? new Date(msg.createdAt).toLocaleString() : "Recent"}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-xs font-semibold text-purple-300 block mb-1">Subject: {msg.subject}</span>
+                    <p className="text-xs text-slate-300 bg-slate-900/60 p-3.5 rounded-xl border border-white/5 whitespace-pre-wrap leading-relaxed">
+                      {msg.message}
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
+                    <a
+                      href={`mailto:${msg.email}?subject=Re: ${encodeURIComponent(msg.subject)}`}
+                      className="px-3.5 py-1.5 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-500 transition-all flex items-center gap-1.5"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      <span>Reply via Email</span>
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
