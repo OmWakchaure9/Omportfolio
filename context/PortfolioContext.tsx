@@ -54,12 +54,12 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [data, setData] = useState<PortfolioDataType>(PORTFOLIO_DATA);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load saved state from server API first (falls back to localStorage / default data)
+  // Load saved state from server API / localStorage ONLY once on mount
   useEffect(() => {
     let isMounted = true;
 
     const initData = async () => {
-      // 1. Quick load from localStorage for fast initial render
+      // 1. Quick load from localStorage for instant render
       try {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved && isMounted) {
@@ -96,96 +96,96 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, []);
 
-  // Save changes to localStorage AND server API whenever data mutates after initial load
-  useEffect(() => {
-    if (isLoaded) {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      } catch (e) {
-        // Quota error
-      }
+  // Helper to persist to localStorage & POST to backend server ONLY when user makes explicit changes
+  const persistAndSync = (newData: PortfolioDataType) => {
+    const safeData = safeMergePortfolioData(newData);
+    setData(safeData);
 
-      // Sync data to backend server API so all devices receive the updated data
-      fetch("/api/portfolio", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }).catch((err) => {
-        console.error("Failed to sync portfolio data to server API:", err);
-      });
-    }
-  }, [data, isLoaded]);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(safeData));
+    } catch (e) {}
+
+    fetch("/api/portfolio", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(safeData),
+    }).catch((err) => {
+      console.error("Failed to sync portfolio data to server API:", err);
+    });
+  };
 
   const syncDataToServer = async () => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      await fetch("/api/portfolio", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-    } catch (e) {
-      console.error("Error manual sync to server:", e);
-    }
+    persistAndSync(data);
   };
 
   const updatePersonal = (personal: Partial<PortfolioDataType["personal"]>) => {
-    setData((prev) => ({
-      ...prev,
-      personal: { ...prev.personal, ...personal }
-    }));
+    const updated = safeMergePortfolioData({
+      ...data,
+      personal: { ...data.personal, ...personal }
+    });
+    persistAndSync(updated);
   };
 
   const updateSkills = (skills: Skill[]) => {
-    setData((prev) => ({ ...prev, skills }));
+    const updated = safeMergePortfolioData({ ...data, skills });
+    persistAndSync(updated);
   };
 
   const addSkill = (skill: Skill) => {
-    setData((prev) => ({
-      ...prev,
-      skills: [skill, ...prev.skills]
-    }));
+    const updated = safeMergePortfolioData({
+      ...data,
+      skills: [skill, ...data.skills]
+    });
+    persistAndSync(updated);
   };
 
   const deleteSkill = (skillName: string) => {
-    setData((prev) => ({
-      ...prev,
-      skills: prev.skills.filter((s) => s.name !== skillName)
-    }));
+    const updated = safeMergePortfolioData({
+      ...data,
+      skills: data.skills.filter((s) => s.name !== skillName)
+    });
+    persistAndSync(updated);
   };
 
   const updateProjects = (projects: Project[]) => {
-    setData((prev) => ({ ...prev, projects }));
+    const updated = safeMergePortfolioData({ ...data, projects });
+    persistAndSync(updated);
   };
 
   const addProject = (project: Project) => {
-    setData((prev) => ({
-      ...prev,
-      projects: [project, ...prev.projects]
-    }));
+    const updated = safeMergePortfolioData({
+      ...data,
+      projects: [project, ...data.projects]
+    });
+    persistAndSync(updated);
   };
 
   const deleteProject = (projectId: string) => {
-    setData((prev) => ({
-      ...prev,
-      projects: prev.projects.filter((p) => p.id !== projectId)
-    }));
+    const updated = safeMergePortfolioData({
+      ...data,
+      projects: data.projects.filter((p) => p.id !== projectId)
+    });
+    persistAndSync(updated);
   };
 
   const updateExperience = (experience: ExperienceItem[]) => {
-    setData((prev) => ({ ...prev, experience }));
+    const updated = safeMergePortfolioData({ ...data, experience });
+    persistAndSync(updated);
   };
 
   const updateEducation = (education: EducationItem[]) => {
-    setData((prev) => ({ ...prev, education }));
+    const updated = safeMergePortfolioData({ ...data, education });
+    persistAndSync(updated);
   };
 
   const updateAchievements = (achievements: AchievementItem[]) => {
-    setData((prev) => ({ ...prev, achievements }));
+    const updated = safeMergePortfolioData({ ...data, achievements });
+    persistAndSync(updated);
   };
 
   const updateCertificates = (certificates: Certificate[]) => {
-    setData((prev) => ({ ...prev, certificates }));
+    const updated = safeMergePortfolioData({ ...data, certificates });
+    persistAndSync(updated);
   };
 
   const resetToDefaults = () => {
