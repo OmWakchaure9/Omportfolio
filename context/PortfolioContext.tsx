@@ -54,28 +54,36 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [data, setData] = useState<PortfolioDataType>(PORTFOLIO_DATA);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load saved state from server API / localStorage ONLY once on mount
+  // Load saved state from localStorage & server API safely on mount
   useEffect(() => {
     let isMounted = true;
 
     const initData = async () => {
-      // 1. Quick load from localStorage for instant render
+      let localCustomData: any = null;
+
+      // 1. First, load custom edits from localStorage (so user edits are NEVER lost on refresh)
       try {
         const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved && isMounted) {
-          setData(safeMergePortfolioData(JSON.parse(saved)));
+        if (saved) {
+          localCustomData = JSON.parse(saved);
+          if (isMounted) {
+            setData(safeMergePortfolioData(localCustomData));
+          }
         }
       } catch (e) {
         // Fallback
       }
 
-      // 2. Fetch latest global server data so ALL devices get updated content
+      // 2. Fetch server data and safely merge with local custom edits
       try {
         const res = await fetch("/api/portfolio", { cache: "no-store" });
         if (res.ok) {
           const result = await res.json();
           if (result.success && result.data && isMounted) {
-            const merged = safeMergePortfolioData(result.data);
+            // Local custom edits take precedence if present so refresh NEVER wipes user edits
+            const merged = localCustomData
+              ? safeMergePortfolioData({ ...result.data, ...localCustomData })
+              : safeMergePortfolioData(result.data);
             setData(merged);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
           }
@@ -96,7 +104,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, []);
 
-  // Helper to persist to localStorage & POST to backend server ONLY when user makes explicit changes
+  // Helper to persist data to localStorage & backend server
   const persistAndSync = (newData: PortfolioDataType) => {
     const safeData = safeMergePortfolioData(newData);
     setData(safeData);
