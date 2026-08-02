@@ -75,6 +75,8 @@ export default function AdminDashboard() {
 
   const [activeTab, setActiveTab] = useState<"personal" | "skills" | "projects" | "experience" | "certificates" | "security" | "export" | "inbox">("personal");
   const [inboxMessages, setInboxMessages] = useState<any[]>([]);
+  const [githubTokenInput, setGithubTokenInput] = useState("");
+  const [commitStatusMsg, setCommitStatusMsg] = useState("");
   const [saveToast, setSaveToast] = useState(false);
   const [currentPinInput, setCurrentPinInput] = useState("");
   const [newPinInput, setNewPinInput] = useState("");
@@ -2129,6 +2131,59 @@ export default function AdminDashboard() {
                 <span className="text-xs text-slate-400 font-mono font-normal">Save full raw backup file</span>
               </div>
             </button>
+          </div>
+
+          {/* GitHub Direct Auto-Sync & Deployment Card */}
+          <div className="p-6 rounded-2xl bg-slate-950/90 border border-cyan-500/40 space-y-4">
+            <h3 className="text-sm font-bold text-cyan-300 flex items-center gap-2 font-mono">
+              <Upload className="w-4 h-4 text-cyan-400" />
+              <span>Publish Changes Globally to All Devices (GitHub Auto-Deploy)</span>
+            </h3>
+            <p className="text-xs text-slate-300 leading-relaxed font-sans">
+              Enter your GitHub Personal Access Token below to instantly commit your Admin Panel edits to your GitHub repository (<strong className="text-cyan-400">OmWakchaure9/Omportfolio</strong>). Vercel will automatically deploy the changes to all visitors across every device in ~30 seconds!
+            </p>
+
+            {commitStatusMsg && (
+              <div className="p-3 rounded-xl bg-cyan-950 border border-cyan-500/40 text-cyan-300 text-xs font-mono">
+                {commitStatusMsg}
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input
+                type="password"
+                value={githubTokenInput}
+                onChange={(e) => setGithubTokenInput(e.target.value)}
+                placeholder="Paste GitHub Token (ghp_...)..."
+                className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
+              />
+              <button
+                type="button"
+                onClick={async () => {
+                  audioFx.playClick();
+                  setCommitStatusMsg("Committing edits to GitHub repository...");
+                  try {
+                    const res = await fetch("/api/portfolio/commit", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ data, githubToken: githubTokenInput }),
+                    });
+                    const resData = await res.json();
+                    if (resData.success) {
+                      audioFx.playSuccess();
+                      setCommitStatusMsg("🚀 " + resData.message);
+                    } else {
+                      setCommitStatusMsg("❌ " + (resData.error || "GitHub commit failed"));
+                    }
+                  } catch {
+                    setCommitStatusMsg("❌ Network error committing to GitHub");
+                  }
+                }}
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-cyan-500 to-blue-600 text-white font-bold text-xs shadow-neon-purple hover:scale-105 transition-all whitespace-nowrap cursor-pointer"
+              >
+                Sync & Deploy Globally
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -4,7 +4,6 @@ import path from "path";
 import { PORTFOLIO_DATA } from "@/data/portfolioData";
 
 const DATA_FILE_PATH = path.join(process.cwd(), "data", "portfolioData.json");
-const CLOUD_PORTFOLIO_BLOB_URL = "https://jsonblob.com/api/jsonBlob/019fc192-ec7e-7f39-b6f2-1166fc51e047";
 
 let memoryCache: any = null;
 
@@ -30,71 +29,44 @@ function safeMerge(incoming: any) {
   };
 }
 
-async function readPortfolioData() {
-  // 1. Try Cloud Persistent Store
-  try {
-    const cloudRes = await fetch(CLOUD_PORTFOLIO_BLOB_URL, {
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    });
-    if (cloudRes.ok) {
-      const cloudData = await cloudRes.json();
-      if (cloudData && cloudData.personal) {
-        memoryCache = safeMerge(cloudData);
-        return memoryCache;
-      }
-    }
-  } catch (err) {
-    console.error("Cloud portfolio fetch error:", err);
-  }
-
-  // 2. Fallback to memory cache
+function readPortfolioData() {
   if (memoryCache) {
     return safeMerge(memoryCache);
   }
 
-  // 3. Fallback to local file
   try {
     if (fs.existsSync(DATA_FILE_PATH)) {
       const fileContent = fs.readFileSync(DATA_FILE_PATH, "utf-8");
       memoryCache = safeMerge(JSON.parse(fileContent));
       return memoryCache;
     }
-  } catch (error) {}
+  } catch (error) {
+    console.error("Error reading portfolioData.json:", error);
+  }
 
   return PORTFOLIO_DATA;
 }
 
-async function writePortfolioData(data: any) {
+function writePortfolioData(data: any) {
   const merged = safeMerge(data);
   memoryCache = merged;
 
-  // 1. Save to Cloud Persistent Blob
-  try {
-    await fetch(CLOUD_PORTFOLIO_BLOB_URL, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(merged),
-    });
-  } catch (err) {
-    console.error("Cloud portfolio update error:", err);
-  }
-
-  // 2. Save to local disk file
   try {
     const dirPath = path.join(process.cwd(), "data");
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
     }
     fs.writeFileSync(DATA_FILE_PATH, JSON.stringify(merged, null, 2), "utf-8");
-  } catch (error) {}
+  } catch (error) {
+    console.error("Error writing portfolioData.json:", error);
+  }
 
   return true;
 }
 
 export async function GET() {
   try {
-    const data = await readPortfolioData();
+    const data = readPortfolioData();
     return NextResponse.json({ success: true, data }, {
       headers: {
         "Cache-Control": "no-store, max-age=0, must-revalidate",
@@ -115,10 +87,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const saved = await writePortfolioData(body);
+    const saved = writePortfolioData(body);
     return NextResponse.json({
       success: saved,
-      message: "Portfolio data saved globally on cloud server!",
+      message: "Portfolio data saved in server memory!",
       data: memoryCache || PORTFOLIO_DATA,
     });
   } catch (error: any) {
