@@ -28,6 +28,28 @@ const PortfolioContext = createContext<PortfolioContextType | undefined>(undefin
 
 const STORAGE_KEY = "om_portfolio_data_v2";
 
+export const safeMergePortfolioData = (incoming: any): PortfolioDataType => {
+  if (!incoming || typeof incoming !== "object") return PORTFOLIO_DATA;
+  return {
+    ...PORTFOLIO_DATA,
+    ...incoming,
+    personal: {
+      ...PORTFOLIO_DATA.personal,
+      ...(incoming.personal || {}),
+    },
+    skills: Array.isArray(incoming.skills) && incoming.skills.length > 0 ? incoming.skills : PORTFOLIO_DATA.skills,
+    projects: Array.isArray(incoming.projects) && incoming.projects.length > 0 ? incoming.projects : PORTFOLIO_DATA.projects,
+    experience: Array.isArray(incoming.experience) && incoming.experience.length > 0 ? incoming.experience : PORTFOLIO_DATA.experience,
+    education: Array.isArray(incoming.education) && incoming.education.length > 0 ? incoming.education : PORTFOLIO_DATA.education,
+    achievements: Array.isArray(incoming.achievements) && incoming.achievements.length > 0 ? incoming.achievements : PORTFOLIO_DATA.achievements,
+    certificates: Array.isArray(incoming.certificates) && incoming.certificates.length > 0 ? incoming.certificates : PORTFOLIO_DATA.certificates,
+    testimonials: Array.isArray(incoming.testimonials) && incoming.testimonials.length > 0 ? incoming.testimonials : PORTFOLIO_DATA.testimonials,
+    stats: Array.isArray(incoming.stats) && incoming.stats.length > 0 ? incoming.stats : PORTFOLIO_DATA.stats,
+    aboutTimeline: Array.isArray(incoming.aboutTimeline) && incoming.aboutTimeline.length > 0 ? incoming.aboutTimeline : PORTFOLIO_DATA.aboutTimeline,
+    githubStats: incoming.githubStats || PORTFOLIO_DATA.githubStats,
+  };
+};
+
 export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [data, setData] = useState<PortfolioDataType>(PORTFOLIO_DATA);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -41,10 +63,10 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved && isMounted) {
-          setData(JSON.parse(saved));
+          setData(safeMergePortfolioData(JSON.parse(saved)));
         }
       } catch (e) {
-        // Fallback to default
+        // Fallback
       }
 
       // 2. Fetch latest global server data so ALL devices get updated content
@@ -53,8 +75,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (res.ok) {
           const result = await res.json();
           if (result.success && result.data && isMounted) {
-            setData(result.data);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data));
+            const merged = safeMergePortfolioData(result.data);
+            setData(merged);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
           }
         }
       } catch (err) {
