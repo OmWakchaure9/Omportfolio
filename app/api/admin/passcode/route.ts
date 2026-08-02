@@ -1,110 +1,97 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
 
-const PASSCODE_FILE_PATH = path.join(process.cwd(), "data", "adminPasscode.json");
-const CLOUD_PASSCODE_BLOB_URL = "https://jsonblob.com/api/jsonBlob/019fc192-e3b6-7d26-807a-acbc1c3dd755";
 const DEFAULT_PIN = "OmAdminPasscode";
+const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 
-let cachedPin: string | null = null;
+let memoryPin: string | null = null;
 
-async function getStoredPin(): Promise<string> {
-  // 1. Fetch from Cloud Persistent Store so all devices/serverless containers get the same PIN
+async function getPinFromUpstash() {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return null;
   try {
-    const cloudRes = await fetch(CLOUD_PASSCODE_BLOB_URL, { cache: "no-store" });
-    if (cloudRes.ok) {
-      const cloudData = await cloudRes.json();
-      if (cloudData && cloudData.pin) {
-        cachedPin = cloudData.pin;
-        return cloudData.pin;
+    const res = await fetch(`${UPSTASH_URL}/get/admin_passcode_v1`, {
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.result) {
+        return typeof data.result === "string" ? data.result : String(data.result);
       }
     }
   } catch (err) {
-    console.error("Cloud passcode fetch error:", err);
+    console.error("Upstash GET passcode error:", err);
   }
-
-  // 2. Fallback to memory cache
-  if (cachedPin) return cachedPin;
-
-  // 3. Fallback to local disk file
-  try {
-    if (fs.existsSync(PASSCODE_FILE_PATH)) {
-      const content = fs.readFileSync(PASSCODE_FILE_PATH, "utf-8");
-      const parsed = JSON.parse(content);
-      if (parsed && parsed.pin) {
-        cachedPin = parsed.pin;
-        return cachedPin as string;
-      }
-    }
-  } catch (err) {}
-
-  cachedPin = DEFAULT_PIN;
-  return DEFAULT_PIN;
+  return null;
 }
 
-async function saveStoredPin(newPin: string): Promise<boolean> {
-  cachedPin = newPin;
-
-  // 1. Save to Cloud Persistent Store
+async function setPinInUpstash(pin: string) {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return false;
   try {
-    await fetch(CLOUD_PASSCODE_BLOB_URL, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pin: newPin, updatedAt: new Date().toISOString() }),
+    const res = await fetch(`${UPSTASH_URL}/set/admin_passcode_v1`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${UPSTASH_TOKEN}`,
+        "Content-Type": "text/plain",
+      },
+      body: pin,
     });
+    return res.ok;
   } catch (err) {
-    console.error("Cloud passcode update error:", err);
+    console.error("Upstash SET passcode error:", err);
+    return false;
   }
-
-  // 2. Save to local disk file
-  try {
-    const dirPath = path.join(process.cwd(), "data");
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
-    }
-    fs.writeFileSync(PASSCODE_FILE_PATH, JSON.stringify({ pin: newPin, updatedAt: new Date().toISOString() }, null, 2), "utf-8");
-  } catch (err) {}
-
-  return true;
 }
 
 export async function GET() {
-  const currentPin = await getStoredPin();
-  const isDefault = currentPin === DEFAULT_PIN;
-  return NextResponse.json({ success: true, isDefault }, {
-    headers: { "Cache-Control": "no-store, max-age=0" },
-  });
+  try {
+    const cloudPin = await getPinFromUpstash();
+    const currentPin = cloudPin || memoryPin || DEFAULT_PIN;
+    return NextResponse.json({ success: true, pin: currentPin });
+  } catch {
+    return NextResponse.json({ success: true, pin: DEFAULT_PIN });
+  }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { action, passcode, newPin } = body;
+    const { action, currentPin, newPin } = body;
 
-    const currentPin = await getStoredPin();
+    const cloudPin = await getPinFromUpstash();
+    const activePin = cloudPin || memoryPin || DEFAULT_PIN;
 
     if (action === "verify") {
-      const isValid = (passcode || "").trim() === currentPin.trim();
-      return NextResponse.json({
-        success: isValid,
-        message: isValid ? "Access Granted" : "Incorrect PIN passcode",
-      });
+      const isValid = currentPin === activePin;
+      return NextResponse.json({ success: isValid });
     }
 
     if (action === "update") {
-      if (!newPin || typeof newPin !== "string" || newPin.trim().length === 0) {
-        return NextResponse.json({ success: false, error: "New PIN passcode cannot be empty" }, { status: 400 });
+      if (!newPin || typeof newPin !== "string" || newPin.trim().length < 4) {
+        return NextResponse.json(
+          { success: false, error: "New passcode must be at least 4 characters long." },
+          { status: 400 }
+        );
       }
 
-      const saved = await saveStoredPin(newPin.trim());
+      memoryPin = newPin.trim();
+      await setPinInUpstash(memoryPin);
+
       return NextResponse.json({
-        success: saved,
-        message: "Admin PIN updated globally across all devices!",
+        success: true,
+        message: "Admin passcode updated and synced globally!",
+        pin: memoryPin,
       });
     }
 
-    return NextResponse.json({ success: false, error: "Invalid action" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: "Invalid action type." },
+      { status: 400 }
+    );
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message || "Failed to process request" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message || "Passcode operation failed." },
+      { status: 500 }
+    );
   }
 }

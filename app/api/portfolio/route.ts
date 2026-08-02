@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
 import { PORTFOLIO_DATA } from "@/data/portfolioData";
 
-const DATA_FILE_PATH = path.join(process.cwd(), "data", "portfolioData.json");
+const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 
 let memoryCache: any = null;
 
@@ -29,48 +28,62 @@ function safeMerge(incoming: any) {
   };
 }
 
-function readPortfolioData() {
-  if (memoryCache) {
-    return safeMerge(memoryCache);
-  }
-
+async function readFromUpstash() {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return null;
   try {
-    if (fs.existsSync(DATA_FILE_PATH)) {
-      const fileContent = fs.readFileSync(DATA_FILE_PATH, "utf-8");
-      memoryCache = safeMerge(JSON.parse(fileContent));
-      return memoryCache;
+    const res = await fetch(`${UPSTASH_URL}/get/portfolio_data_v1`, {
+      headers: {
+        Authorization: `Bearer ${UPSTASH_TOKEN}`,
+      },
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.result) {
+        const parsed = typeof data.result === "string" ? JSON.parse(data.result) : data.result;
+        return safeMerge(parsed);
+      }
     }
-  } catch (error) {
-    console.error("Error reading portfolioData.json:", error);
+  } catch (err) {
+    console.error("Upstash GET portfolio error:", err);
   }
-
-  return PORTFOLIO_DATA;
+  return null;
 }
 
-function writePortfolioData(data: any) {
-  const merged = safeMerge(data);
-  memoryCache = merged;
-
+async function writeToUpstash(data: any) {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return false;
   try {
-    const dirPath = path.join(process.cwd(), "data");
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
-    }
-    fs.writeFileSync(DATA_FILE_PATH, JSON.stringify(merged, null, 2), "utf-8");
-  } catch (error) {
-    console.error("Error writing portfolioData.json:", error);
+    const jsonStr = JSON.stringify(data);
+    const res = await fetch(`${UPSTASH_URL}/set/portfolio_data_v1`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${UPSTASH_TOKEN}`,
+        "Content-Type": "text/plain",
+      },
+      body: jsonStr,
+    });
+    return res.ok;
+  } catch (err) {
+    console.error("Upstash SET portfolio error:", err);
+    return false;
   }
-
-  return true;
 }
 
 export async function GET() {
   try {
-    const data = readPortfolioData();
-    return NextResponse.json({ success: true, data }, {
-      headers: {
-        "Cache-Control": "no-store, max-age=0, must-revalidate",
-      },
+    // 1. Try Upstash Redis cloud database
+    const cloudData = await readFromUpstash();
+    if (cloudData) {
+      memoryCache = cloudData;
+      return NextResponse.json({ success: true, data: cloudData }, {
+        headers: { "Cache-Control": "no-store, max-age=0, must-revalidate" },
+      });
+    }
+
+    // 2. Fallback to memory cache or PORTFOLIO_DATA
+    const fallback = memoryCache ? safeMerge(memoryCache) : PORTFOLIO_DATA;
+    return NextResponse.json({ success: true, data: fallback }, {
+      headers: { "Cache-Control": "no-store, max-age=0, must-revalidate" },
     });
   } catch {
     return NextResponse.json({ success: true, data: PORTFOLIO_DATA });
@@ -87,11 +100,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const saved = writePortfolioData(body);
+    const merged = safeMerge(body);
+    memoryCache = merged;
+
+    // Save to Upstash Redis database
+    await writeToUpstash(merged);
+
     return NextResponse.json({
-      success: saved,
-      message: "Portfolio data saved in server memory!",
-      data: memoryCache || PORTFOLIO_DATA,
+      success: true,
+      message: "Portfolio data saved in Upstash Redis database!",
+      data: merged,
     });
   } catch (error: any) {
     return NextResponse.json(
