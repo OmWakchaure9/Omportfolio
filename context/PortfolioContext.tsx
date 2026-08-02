@@ -52,9 +52,8 @@ export const safeMergePortfolioData = (incoming: any): PortfolioDataType => {
 
 export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [data, setData] = useState<PortfolioDataType>(PORTFOLIO_DATA);
-  const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load saved state from server API first (falls back to localStorage / default data)
+  // Load saved state from server API on mount ONLY (never post on load)
   useEffect(() => {
     let isMounted = true;
 
@@ -65,9 +64,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (saved && isMounted) {
           setData(safeMergePortfolioData(JSON.parse(saved)));
         }
-      } catch (e) {
-        // Fallback
-      }
+      } catch (e) {}
 
       // 2. Fetch latest global server data so ALL devices get updated content
       try {
@@ -77,15 +74,13 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (result.success && result.data && isMounted) {
             const merged = safeMergePortfolioData(result.data);
             setData(merged);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+            } catch (e) {}
           }
         }
       } catch (err) {
         console.error("Failed to fetch global portfolio data from server API:", err);
-      } finally {
-        if (isMounted) {
-          setIsLoaded(true);
-        }
       }
     };
 
@@ -96,96 +91,114 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, []);
 
-  // Save changes to localStorage AND server API whenever data mutates after initial load
-  useEffect(() => {
-    if (isLoaded) {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      } catch (e) {
-        // Quota error
-      }
+  // Helper to persist only explicit user mutations to server and localStorage
+  const saveToServerAndLocal = (updatedData: PortfolioDataType) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedData));
+    } catch (e) {}
 
-      // Sync data to backend server API so all devices receive the updated data
-      fetch("/api/portfolio", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }).catch((err) => {
-        console.error("Failed to sync portfolio data to server API:", err);
-      });
-    }
-  }, [data, isLoaded]);
+    fetch("/api/portfolio", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatedData),
+    }).catch((err) => {
+      console.error("Failed to sync portfolio data to server API:", err);
+    });
+  };
 
   const syncDataToServer = async () => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      await fetch("/api/portfolio", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-    } catch (e) {
-      console.error("Error manual sync to server:", e);
-    }
+    saveToServerAndLocal(data);
   };
 
   const updatePersonal = (personal: Partial<PortfolioDataType["personal"]>) => {
-    setData((prev) => ({
-      ...prev,
-      personal: { ...prev.personal, ...personal }
-    }));
+    setData((prev) => {
+      const next = {
+        ...prev,
+        personal: { ...prev.personal, ...personal }
+      };
+      saveToServerAndLocal(next);
+      return next;
+    });
   };
 
   const updateSkills = (skills: Skill[]) => {
-    setData((prev) => ({ ...prev, skills }));
+    setData((prev) => {
+      const next = { ...prev, skills };
+      saveToServerAndLocal(next);
+      return next;
+    });
   };
 
   const addSkill = (skill: Skill) => {
-    setData((prev) => ({
-      ...prev,
-      skills: [skill, ...prev.skills]
-    }));
+    setData((prev) => {
+      const next = { ...prev, skills: [skill, ...prev.skills] };
+      saveToServerAndLocal(next);
+      return next;
+    });
   };
 
   const deleteSkill = (skillName: string) => {
-    setData((prev) => ({
-      ...prev,
-      skills: prev.skills.filter((s) => s.name !== skillName)
-    }));
+    setData((prev) => {
+      const next = { ...prev, skills: prev.skills.filter((s) => s.name !== skillName) };
+      saveToServerAndLocal(next);
+      return next;
+    });
   };
 
   const updateProjects = (projects: Project[]) => {
-    setData((prev) => ({ ...prev, projects }));
+    setData((prev) => {
+      const next = { ...prev, projects };
+      saveToServerAndLocal(next);
+      return next;
+    });
   };
 
   const addProject = (project: Project) => {
-    setData((prev) => ({
-      ...prev,
-      projects: [project, ...prev.projects]
-    }));
+    setData((prev) => {
+      const next = { ...prev, projects: [project, ...prev.projects] };
+      saveToServerAndLocal(next);
+      return next;
+    });
   };
 
   const deleteProject = (projectId: string) => {
-    setData((prev) => ({
-      ...prev,
-      projects: prev.projects.filter((p) => p.id !== projectId)
-    }));
+    setData((prev) => {
+      const next = { ...prev, projects: prev.projects.filter((p) => p.id !== projectId) };
+      saveToServerAndLocal(next);
+      return next;
+    });
   };
 
   const updateExperience = (experience: ExperienceItem[]) => {
-    setData((prev) => ({ ...prev, experience }));
+    setData((prev) => {
+      const next = { ...prev, experience };
+      saveToServerAndLocal(next);
+      return next;
+    });
   };
 
   const updateEducation = (education: EducationItem[]) => {
-    setData((prev) => ({ ...prev, education }));
+    setData((prev) => {
+      const next = { ...prev, education };
+      saveToServerAndLocal(next);
+      return next;
+    });
   };
 
   const updateAchievements = (achievements: AchievementItem[]) => {
-    setData((prev) => ({ ...prev, achievements }));
+    setData((prev) => {
+      const next = { ...prev, achievements };
+      saveToServerAndLocal(next);
+      return next;
+    });
   };
 
   const updateCertificates = (certificates: Certificate[]) => {
-    setData((prev) => ({ ...prev, certificates }));
+    setData((prev) => {
+      const next = { ...prev, certificates };
+      saveToServerAndLocal(next);
+      return next;
+    });
   };
 
   const resetToDefaults = () => {
