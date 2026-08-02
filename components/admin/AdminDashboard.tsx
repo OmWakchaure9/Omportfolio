@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   ShieldCheck,
@@ -92,6 +92,13 @@ export default function AdminDashboard() {
 
   // Personal Form state
   const [personalForm, setPersonalForm] = useState(data.personal);
+
+  // Sync personal form state when data finishes loading from server API
+  useEffect(() => {
+    if (data && data.personal) {
+      setPersonalForm(data.personal);
+    }
+  }, [data.personal]);
 
   // New Skill state
   const [newSkill, setNewSkill] = useState({
