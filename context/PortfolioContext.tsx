@@ -21,6 +21,7 @@ interface PortfolioContextType {
   resetToDefaults: () => void;
   exportAsJSON: () => void;
   exportAsTS: () => void;
+  syncDataToServer: () => Promise<void>;
 }
 
 const PortfolioContext = createContext<PortfolioContextType | undefined>(undefined);
@@ -31,31 +32,79 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [data, setData] = useState<PortfolioDataType>(PORTFOLIO_DATA);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load saved state from localStorage on client mount
+  // Load saved state from server API first (falls back to localStorage / default data)
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setData(parsed);
+    let isMounted = true;
+
+    const initData = async () => {
+      // 1. Quick load from localStorage for fast initial render
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved && isMounted) {
+          setData(JSON.parse(saved));
+        }
+      } catch (e) {
+        // Fallback to default
       }
-    } catch {
-      // Fallback to default PORTFOLIO_DATA
-    } finally {
-      setIsLoaded(true);
-    }
+
+      // 2. Fetch latest global server data so ALL devices get updated content
+      try {
+        const res = await fetch("/api/portfolio", { cache: "no-store" });
+        if (res.ok) {
+          const result = await res.json();
+          if (result.success && result.data && isMounted) {
+            setData(result.data);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch global portfolio data from server API:", err);
+      } finally {
+        if (isMounted) {
+          setIsLoaded(true);
+        }
+      }
+    };
+
+    initData();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  // Save changes to localStorage whenever data mutates
+  // Save changes to localStorage AND server API whenever data mutates after initial load
   useEffect(() => {
     if (isLoaded) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      } catch {
-        // Handle quota or storage disabled
+      } catch (e) {
+        // Quota error
       }
+
+      // Sync data to backend server API so all devices receive the updated data
+      fetch("/api/portfolio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }).catch((err) => {
+        console.error("Failed to sync portfolio data to server API:", err);
+      });
     }
   }, [data, isLoaded]);
+
+  const syncDataToServer = async () => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      await fetch("/api/portfolio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+    } catch (e) {
+      console.error("Error manual sync to server:", e);
+    }
+  };
 
   const updatePersonal = (personal: Partial<PortfolioDataType["personal"]>) => {
     setData((prev) => ({
@@ -119,6 +168,11 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const resetToDefaults = () => {
     setData(PORTFOLIO_DATA);
     localStorage.removeItem(STORAGE_KEY);
+    fetch("/api/portfolio", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(PORTFOLIO_DATA),
+    }).catch(() => {});
   };
 
   const exportAsJSON = () => {
@@ -163,6 +217,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         resetToDefaults,
         exportAsJSON,
         exportAsTS,
+        syncDataToServer,
       }}
     >
       {children}
