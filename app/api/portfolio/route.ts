@@ -3,12 +3,16 @@ import fs from "fs";
 import path from "path";
 import { PORTFOLIO_DATA } from "@/data/portfolioData";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
 const DATA_FILE_PATH = path.join(process.cwd(), "data", "portfolioData.json");
 const CLOUD_PORTFOLIO_BLOB_URL = "https://jsonblob.com/api/jsonBlob/019fc192-ec7e-7f39-b6f2-1166fc51e047";
 
 let memoryCache: any = null;
 
-function safeMerge(incoming: any) {
+function safeMergeWithDefault(incoming: any) {
   if (!incoming || typeof incoming !== "object") return PORTFOLIO_DATA;
   return {
     ...PORTFOLIO_DATA,
@@ -31,16 +35,16 @@ function safeMerge(incoming: any) {
 }
 
 async function readPortfolioData() {
-  // 1. Try Cloud Persistent Store
+  // 1. Try Cloud Persistent Store with no-store headers
   try {
-    const cloudRes = await fetch(CLOUD_PORTFOLIO_BLOB_URL, {
+    const cloudRes = await fetch(`${CLOUD_PORTFOLIO_BLOB_URL}?t=${Date.now()}`, {
       cache: "no-store",
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
     });
     if (cloudRes.ok) {
       const cloudData = await cloudRes.json();
       if (cloudData && cloudData.personal) {
-        memoryCache = safeMerge(cloudData);
+        memoryCache = safeMergeWithDefault(cloudData);
         return memoryCache;
       }
     }
@@ -50,14 +54,14 @@ async function readPortfolioData() {
 
   // 2. Fallback to memory cache
   if (memoryCache) {
-    return safeMerge(memoryCache);
+    return safeMergeWithDefault(memoryCache);
   }
 
-  // 3. Fallback to local file
+  // 3. Fallback to local disk file
   try {
     if (fs.existsSync(DATA_FILE_PATH)) {
       const fileContent = fs.readFileSync(DATA_FILE_PATH, "utf-8");
-      memoryCache = safeMerge(JSON.parse(fileContent));
+      memoryCache = safeMergeWithDefault(JSON.parse(fileContent));
       return memoryCache;
     }
   } catch (error) {}
@@ -65,8 +69,29 @@ async function readPortfolioData() {
   return PORTFOLIO_DATA;
 }
 
-async function writePortfolioData(data: any) {
-  const merged = safeMerge(data);
+async function writePortfolioData(incomingData: any) {
+  // Read current existing data first so saving one section never wipes out other sections
+  const existing = await readPortfolioData();
+
+  const merged = {
+    ...existing,
+    ...incomingData,
+    personal: {
+      ...existing.personal,
+      ...(incomingData.personal || {}),
+    },
+    skills: Array.isArray(incomingData.skills) ? incomingData.skills : existing.skills,
+    projects: Array.isArray(incomingData.projects) ? incomingData.projects : existing.projects,
+    experience: Array.isArray(incomingData.experience) ? incomingData.experience : existing.experience,
+    education: Array.isArray(incomingData.education) ? incomingData.education : existing.education,
+    achievements: Array.isArray(incomingData.achievements) ? incomingData.achievements : existing.achievements,
+    certificates: Array.isArray(incomingData.certificates) ? incomingData.certificates : existing.certificates,
+    testimonials: Array.isArray(incomingData.testimonials) ? incomingData.testimonials : existing.testimonials,
+    stats: Array.isArray(incomingData.stats) ? incomingData.stats : existing.stats,
+    aboutTimeline: Array.isArray(incomingData.aboutTimeline) ? incomingData.aboutTimeline : existing.aboutTimeline,
+    githubStats: incomingData.githubStats || existing.githubStats,
+  };
+
   memoryCache = merged;
 
   // 1. Save to Cloud Persistent Blob
@@ -97,7 +122,8 @@ export async function GET() {
     const data = await readPortfolioData();
     return NextResponse.json({ success: true, data }, {
       headers: {
-        "Cache-Control": "no-store, max-age=0, must-revalidate",
+        "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+        "Pragma": "no-cache",
       },
     });
   } catch {

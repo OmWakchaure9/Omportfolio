@@ -68,7 +68,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       // 2. Fetch latest global server data so ALL devices get updated content
       try {
-        const res = await fetch("/api/portfolio", { cache: "no-store" });
+        const res = await fetch(`/api/portfolio?t=${Date.now()}`, { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
         if (res.ok) {
           const result = await res.json();
           if (result.success && result.data && isMounted) {
