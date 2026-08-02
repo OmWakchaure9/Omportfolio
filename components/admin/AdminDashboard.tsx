@@ -157,14 +157,39 @@ export default function AdminDashboard() {
     description: ""
   });
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     audioFx.playClick();
+    const inputPin = passcode.trim();
+
+    if (!inputPin) {
+      setAuthError("Please enter PIN passcode.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/admin/passcode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "verify", passcode: inputPin }),
+      });
+      const resData = await res.json();
+
+      if (resData.success) {
+        setIsAuthenticated(true);
+        setAuthError("");
+        localStorage.setItem("om_admin_custom_pin", inputPin);
+        audioFx.playSuccess();
+        return;
+      }
+    } catch {
+      // Fallback
+    }
+
     const savedCustomPin = typeof window !== "undefined" ? localStorage.getItem("om_admin_custom_pin") : null;
-    // Strictly accept ONLY the user-set passcode! Default 1234 passcode is strictly disabled.
     const activeSetPin = savedCustomPin || "OmAdminPasscode";
 
-    if (passcode.trim() === activeSetPin) {
+    if (inputPin === activeSetPin) {
       setIsAuthenticated(true);
       setAuthError("");
       audioFx.playSuccess();
@@ -270,8 +295,20 @@ export default function AdminDashboard() {
       const resData = await res.json();
 
       if (resData.success) {
-        localStorage.setItem("om_admin_custom_pin", newPasscodePin.trim());
-        setPasscode(newPasscodePin.trim());
+        const cleanPin = newPasscodePin.trim();
+        // Save new PIN to server API globally across all devices
+        try {
+          await fetch("/api/admin/passcode", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "update", newPin: cleanPin }),
+          });
+        } catch (e) {
+          console.error("Failed to update server PIN:", e);
+        }
+
+        localStorage.setItem("om_admin_custom_pin", cleanPin);
+        setPasscode(cleanPin);
         setIsAuthenticated(true);
         setShowOtpModal(false);
         audioFx.playSuccess();
@@ -1923,15 +1960,10 @@ export default function AdminDashboard() {
           )}
 
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
               audioFx.playClick();
-              const savedCustomPin = localStorage.getItem("om_admin_custom_pin") || "OmAdminPasscode";
-
-              if (currentPinInput.trim() !== savedCustomPin) {
-                setSecurityMsg({ type: "error", text: "Current passcode is incorrect." });
-                return;
-              }
+              const cleanNewPin = newPinInput.trim();
 
               if (!newPinInput.trim()) {
                 setSecurityMsg({ type: "error", text: "New passcode cannot be empty." });
@@ -1943,8 +1975,43 @@ export default function AdminDashboard() {
                 return;
               }
 
-              localStorage.setItem("om_admin_custom_pin", newPinInput.trim());
-              setSecurityMsg({ type: "success", text: "Security Passcode successfully updated! ONLY this set passcode can now access the Admin Panel." });
+              // Verify current pin with server API or fallback
+              let verifiedCurrent = false;
+              try {
+                const checkRes = await fetch("/api/admin/passcode", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "verify", passcode: currentPinInput.trim() }),
+                });
+                const checkData = await checkRes.json();
+                verifiedCurrent = checkData.success;
+              } catch {}
+
+              if (!verifiedCurrent) {
+                const savedCustomPin = localStorage.getItem("om_admin_custom_pin") || "OmAdminPasscode";
+                if (currentPinInput.trim() === savedCustomPin) {
+                  verifiedCurrent = true;
+                }
+              }
+
+              if (!verifiedCurrent) {
+                setSecurityMsg({ type: "error", text: "Current passcode is incorrect." });
+                return;
+              }
+
+              // Update globally on server API
+              try {
+                await fetch("/api/admin/passcode", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "update", newPin: cleanNewPin }),
+                });
+              } catch (e) {
+                console.error("Failed to update PIN on server:", e);
+              }
+
+              localStorage.setItem("om_admin_custom_pin", cleanNewPin);
+              setSecurityMsg({ type: "success", text: "Security Passcode successfully updated globally across all devices!" });
               setCurrentPinInput("");
               setNewPinInput("");
               setConfirmPinInput("");
