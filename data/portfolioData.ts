@@ -96,12 +96,12 @@ export const PORTFOLIO_DATA = {
     titles: [
       "AI & Data Science Engineer",
       "Machine Learning Enthusiast",
-      "Data Analyst"
+      "Data Analyst", "Software Developer"
     ],
     bio: "Passionate AI & Data Science Engineering student with expertise in Machine Learning, Deep Neural Networks, Automated Data Analytics, and Fullstack Web Development. Dedicated to building intelligent systems that transform complex data into actionable business insights.",
     location: "India (Available for Global & Remote Roles)",
     email: "omswakchaure1@gmail.com",
-    phone: "+91 98765 43210",
+    phone: "+91 87999 47703",
     github: "https://github.com/OmWakchaure9",
     linkedin: "https://www.linkedin.com/in/om-wakchaure-247213370?utm_source=share_via&utm_content=profile&utm_medium=member_android",
     instagram: "https://instagram.com/om_wakchaure_09",
